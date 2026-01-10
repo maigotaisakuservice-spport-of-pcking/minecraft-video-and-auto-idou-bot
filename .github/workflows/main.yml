@@ -39,11 +39,13 @@ jobs:
         with:
           node-version: '18' # Mineflayerが要求するバージョン
 
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg
+
       - name: Install dependencies
         run: npm install
-
-      - name: Install ffmpeg and jq
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg jq
 
       - name: Get Bot Username
         id: get_username
