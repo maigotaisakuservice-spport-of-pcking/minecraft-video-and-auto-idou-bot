@@ -51,6 +51,10 @@ async function thinkAndAct(bot) {
         const surroundings = describeSurroundings(bot);
 
         // 2. 外部ファイルの読み込み
+        const statePath = path.join(__dirname, '..', 'state.json');
+        const state = JSON.parse(await readFileContent(statePath) || '{ "current_part": 1 }');
+        const currentPart = state.current_part;
+
         const botMemoryPath = path.join(__dirname, '..', `kioku_${bot.username}.txt`);
         const memory = await readFileContent(botMemoryPath);
         const instruction = await readFileContent('sizi.txt');
@@ -63,12 +67,36 @@ async function thinkAndAct(bot) {
         }
 
         // 3. プロンプトの構築
-        const prompt = `
+        let prompt;
+        if (currentPart >= 47) {
+            // パート47以上の場合は、グランドフィナーレ用の特別プロンプト
+            prompt = `
+あなたはMinecraftの世界で活動するAI Bot、${bot.username}です。
+現在、全48パートのプロジェクトのグランドフィナーレとなるパート${currentPart}の撮影中です。
+あなたの任務は、これまでに建設した鉄道網や建築物を視聴者に紹介する「完成お披露目ツアー」を行うことです。
+
+# 現在のあなたの状況
+${surroundings}
+
+# ツアーのルール
+- 新しい建築や採掘は一切行わないでください。
+- トロッコに乗って、これまでに建設した路線を巡り、車窓からの景色を見せてください。
+- 各駅で下車し、駅の構造や、駅の周りに建てた建物・オブジェなどを紹介してください。
+- 他のBotと協力して、楽しいツアーにしてください。例えば、一人が案内役、もう一人が乗客役になるのも良いでしょう。
+- あなたの行動はすべて視聴者への紹介です。「/say こちらが中央駅です。見てください、このガラス張りの天井が自慢です！」のように、常に視聴者に語りかけるように発言してください。
+- 最終的な行動は、必ず "/say" や "/tp"、"/goto" などのチャットコマンド形式で、一つだけ出力してください。
+
+# あなたの次の行動
+`;
+        } else {
+            // 通常の建設フェーズのプロンプト
+            prompt = `
 あなたはMinecraftの世界で活動する自律型AI Botです。あなたの名前は ${bot.username} です。
 以下の情報を基に、次に取るべき行動を具体的に一つだけ、チャットコマンドの形式で出力してください。
 
 # あなたの現在の状況
 ${surroundings}
+**プロジェクトの進捗:** 現在、全48パート中のパート${currentPart}の撮影中です。
 
 # あなたの記憶 (過去の行動と思考)
 ${memory || 'まだ記憶はありません。'}
@@ -88,6 +116,7 @@ ${knowledge || '特別な知識はありません。'}
 
 # あなたの次の行動
 `;
+        }
         // 4. Gemini APIにリクエストを送信
         const result = await model.generateContent(prompt);
         const response = await result.response;
