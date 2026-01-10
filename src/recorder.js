@@ -119,7 +119,29 @@ function stopRecording() {
     });
 }
 
+/**
+ * スクリーンショットを撮影します。
+ * @param {string} outputFile - 出力ファイルパス (PNG)。
+ * @returns {Promise<void>}
+ */
+function takeScreenshot(outputFile) {
+    return new Promise((resolve, reject) => {
+        if (!viewer) {
+            return reject(new Error('Viewer is not running.'));
+        }
+        try {
+            viewer.takeScreenshot(outputFile);
+            console.log(`Screenshot saved to ${outputFile}`);
+            resolve();
+        } catch (err) {
+            console.error('Failed to take screenshot:', err);
+            reject(err);
+        }
+    });
+}
+
 module.exports = {
     startRecording,
     stopRecording,
+    takeScreenshot,
 };

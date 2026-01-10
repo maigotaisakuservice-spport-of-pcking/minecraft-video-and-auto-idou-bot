@@ -5,7 +5,7 @@ const schedule = require('node-schedule');
 const { exec } = require('child_process');
 const { GoalNear } = require('mineflayer-pathfinder').goals;
 const { createBot, disconnectBot } = require('./src/bot.js');
-const { startRecording, stopRecording } = require('./src/recorder.js');
+const { startRecording, stopRecording, takeScreenshot } = require('./src/recorder.js');
 const { thinkAndAct } = require('./src/ai.js');
 const { uploadFile } = require('./src/gdrive.js');
 
@@ -34,17 +34,34 @@ async function main() {
         // 2. 録画開始
         await startRecording(bot, videoFilePath);
 
-        // 3. AI思考ループを開始 (5分ごと)
+        // 3. サムネイル撮影イベントリスナーを設定
+        bot.on('goal_reached', async () => {
+            console.log(`[${BOT_USERNAME}] Goal reached. Checking if it's for a thumbnail.`);
+            const { x, y, z } = config.behavior.event_coordinates;
+            const goal = bot.pathfinder.goal;
+            if (goal && goal.x === x && goal.y === y && goal.z === z) {
+                // 少し待ってから撮影
+                const delay = Math.random() * 2000 + BOT_INDEX * 200; // 0-2秒 + Botごとのオフセット
+                setTimeout(async () => {
+                    const state = JSON.parse(await fs.readFile(path.join(__dirname, 'state.json'), 'utf8'));
+                    const thumbnailPath = path.join(__dirname, `thumbnail_part_${state.current_part -1}.png`);
+                    console.log(`[${BOT_USERNAME}] Taking thumbnail screenshot: ${thumbnailPath}`);
+                    await takeScreenshot(thumbnailPath);
+                }, delay);
+            }
+        });
+
+        // 4. AI思考ループを開始 (5分ごと)
         // 初回はすぐに実行
         thinkAndAct(bot);
         aiInterval = setInterval(() => thinkAndAct(bot), 5 * 60 * 1000);
 
-        // 4. 15分ごとの定例イベントを設定
+        // 5. 15分ごとの定例イベントを設定
         const rule = new schedule.RecurrenceRule();
         rule.minute = [0, 15, 30, 45];
         eventScheduler = schedule.scheduleJob(rule, () => runScheduledEvent());
 
-        // 5. 安全なシャットダウンタイマーを設定
+        // 6. 安全なシャットダウンタイマーを設定
         setTimeout(shutdown, SHUTDOWN_TIMER_MS);
         console.log(`[${BOT_USERNAME}] Shutdown timer set for 5.5 hours.`);
 
@@ -143,6 +160,17 @@ async function shutdown(reason = 'scheduled') {
         if (fsSync.existsSync(memoryFilePath)) {
             await uploadFile(memoryFilePath, BOT_USERNAME);
             // 記憶ファイルはGitで管理するため、ローカルでは消さない
+        }
+
+        // サムネイル画像をアップロード
+        const files = await fs.readdir(__dirname);
+        for (const file of files) {
+            if (file.startsWith('thumbnail_') && file.endsWith('.png')) {
+                const thumbnailPath = path.join(__dirname, file);
+                await uploadFile(thumbnailPath, BOT_USERNAME);
+                fsSync.unlinkSync(thumbnailPath);
+                console.log(`[${BOT_USERNAME}] Local thumbnail file ${file} deleted.`);
+            }
         }
 
     } catch(uploadError) {
