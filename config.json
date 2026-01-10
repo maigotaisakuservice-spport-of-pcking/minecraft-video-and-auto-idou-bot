@@ -23,6 +23,6 @@
     "parent_folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID"
   },
   "behavior": {
-    "event_coordinates": { "x": 0, "y": 100, "z": 0 }
+    "event_coordinates": { "x": -101, "y": 105, "z": 18 }
   }
 }
