@@ -20,7 +20,7 @@
     "fps": 60
   },
   "gdrive": {
-    "parent_folder_id": "1iEyxteq7y7eNryKpiRrutui6oA5Kyp-2"
+    "parent_folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID"
   },
   "behavior": {
     "event_coordinates": { "x": -101, "y": 105, "z": 18 }

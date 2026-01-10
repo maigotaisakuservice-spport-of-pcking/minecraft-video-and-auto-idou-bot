@@ -6,13 +6,29 @@ on:
     types: [run-minecraft-bot] # このイベントタイプで起動されるようにする
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      bot_indices: ${{ steps.get_indices.outputs.result }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Get Bot Indices
+        id: get_indices
+        run: |
+          COUNT=$(jq '.bots | length' config.json)
+          INDICES=$(seq 0 $(($COUNT - 1)) | jq -R . | jq -s .)
+          echo "result=$INDICES" >> $GITHUB_OUTPUT
+
   run-bots:
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 0から7までのインデックスで8体のBotを並列実行
-        bot_index: [0, 1, 2, 3, 4, 5, 6, 7]
+        bot_index: fromJSON(needs.setup.outputs.bot_indices)
 
     steps:
       - name: Checkout repository
@@ -58,7 +74,7 @@ jobs:
 
   # 全てのBotジョブが完了した後に再起動をトリガーするジョブ
   trigger-next-run:
-    needs: run-bots # run-botsジョブの完了を待つ
+    needs: [setup, run-bots] # run-botsジョブの完了を待つ
     if: always() # run-botsジョブが成功しても失敗しても実行
     runs-on: ubuntu-latest
     steps:
