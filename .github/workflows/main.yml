@@ -33,18 +33,60 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Announce Bot Run
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg jq
+
+      - name: Install Node.js Dependencies
+        run: npm install
+
+      - name: Get Bot Username
+        id: get_username
         run: |
           USERNAME=$(jq -r --argjson index ${{ matrix.bot_index }} '.bots[$index].username' config.json)
-          echo "This is the placeholder run for bot index ${{ matrix.bot_index }} (Username: $USERNAME)."
-          echo "The matrix strategy and job dependency are working correctly if you see this message for all 8 bots."
+          echo "BOT_USERNAME=$USERNAME" >> $GITHUB_ENV
+
+      - name: Run Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          BOT_INDEX: ${{ matrix.bot_index }}
+        run: node main.js
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'github-actions-bot@github.com'
+      
+      - name: Commit and Push Memory File
+        run: |
+          MEMORY_FILE="kioku_${{ env.BOT_USERNAME }}.txt"
+          git pull
+          git add "$MEMORY_FILE"
+          # 変更がある場合のみコミット
+          git diff --staged --quiet || git commit -m "Update memory for ${{ env.BOT_USERNAME }}"
+          git push
 
   trigger-next-run:
     needs: [setup, run-bots]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Announce Trigger Step
+      - name: Trigger next workflow run via repository_dispatch
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          echo "All bot jobs completed. This is the placeholder for the self-triggering job."
-
+          echo "All bots have completed their session. Triggering next run via repository_dispatch."
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            "/repos/${GH_REPO}/dispatches" \
+            -f event_type='run-minecraft-bot'
