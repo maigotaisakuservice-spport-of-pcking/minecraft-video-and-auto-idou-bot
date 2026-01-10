@@ -3,7 +3,6 @@ const fsSync = require('fs');
 const path = require('path');
 const schedule = require('node-schedule');
 const { exec } = require('child_process');
-const { GoalNear } = require('mineflayer-pathfinder').goals;
 const { createBot, disconnectBot } = require('./src/bot.js');
 const { startRecording, stopRecording, takeScreenshot } = require('./src/recorder.js');
 const { thinkAndAct } = require('./src/ai.js');
@@ -34,34 +33,17 @@ async function main() {
         // 2. 録画開始
         await startRecording(bot, videoFilePath);
 
-        // 3. サムネイル撮影イベントリスナーを設定
-        bot.on('goal_reached', async () => {
-            console.log(`[${BOT_USERNAME}] Goal reached. Checking if it's for a thumbnail.`);
-            const { x, y, z } = config.behavior.event_coordinates;
-            const goal = bot.pathfinder.goal;
-            if (goal && goal.x === x && goal.y === y && goal.z === z) {
-                // 少し待ってから撮影
-                const delay = Math.random() * 2000 + BOT_INDEX * 200; // 0-2秒 + Botごとのオフセット
-                setTimeout(async () => {
-                    const state = JSON.parse(await fs.readFile(path.join(__dirname, 'state.json'), 'utf8'));
-                    const thumbnailPath = path.join(__dirname, `thumbnail_part_${state.current_part -1}.png`);
-                    console.log(`[${BOT_USERNAME}] Taking thumbnail screenshot: ${thumbnailPath}`);
-                    await takeScreenshot(thumbnailPath);
-                }, delay);
-            }
-        });
-
-        // 4. AI思考ループを開始 (5分ごと)
+        // 3. AI思考ループを開始 (5分ごと)
         // 初回はすぐに実行
         thinkAndAct(bot);
         aiInterval = setInterval(() => thinkAndAct(bot), 5 * 60 * 1000);
 
-        // 5. 15分ごとの定例イベントを設定
+        // 4. 15分ごとの定例イベントを設定
         const rule = new schedule.RecurrenceRule();
         rule.minute = [0, 15, 30, 45];
         eventScheduler = schedule.scheduleJob(rule, () => runScheduledEvent());
 
-        // 6. 安全なシャットダウンタイマーを設定
+        // 5. 安全なシャットダウンタイマーを設定
         setTimeout(shutdown, SHUTDOWN_TIMER_MS);
         console.log(`[${BOT_USERNAME}] Shutdown timer set for 5.5 hours.`);
 
@@ -126,9 +108,30 @@ async function runScheduledEvent() {
     }
 
     const { x, y, z } = config.behavior.event_coordinates;
-    bot.chat(`/say みんな集合！パート${JSON.parse(fsSync.readFileSync('./state.json', 'utf8')).current_part -1}の撮影お疲れ様！座標(${x}, ${y}, ${z})に向かうよ！`);
-    // Pathfinderプラグインで集合場所へ移動
-    bot.pathfinder.setGoal(new GoalNear(x, y, z, 1));
+    const currentPos = bot.entity.position.clone();
+
+    bot.chat(`/say みんな集合！パート${JSON.parse(fsSync.readFileSync('./state.json', 'utf8')).current_part -1}の撮影お疲れ様！TPするよー！`);
+
+    try {
+        // テレポートして撮影し、元の場所に戻る
+        await bot.chat(`/tp ${BOT_USERNAME} ${x} ${y} ${z}`);
+
+        // 5秒待機して描画を安定させる
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        const state = JSON.parse(await fs.readFile(path.join(__dirname, 'state.json'), 'utf8'));
+        const thumbnailPath = path.join(__dirname, `thumbnail_part_${state.current_part - 1}.png`);
+        console.log(`[${BOT_USERNAME}] Taking thumbnail screenshot: ${thumbnailPath}`);
+        await takeScreenshot(thumbnailPath);
+
+        // 元の場所に戻る
+        await bot.chat(`/tp ${BOT_USERNAME} ${currentPos.x} ${currentPos.y} ${currentPos.z}`);
+        console.log(`[${BOT_USERNAME}] Teleported back to original position.`);
+
+    } catch (error) {
+        console.error(`[${BOT_USERNAME}] An error occurred during teleport event:`, error);
+        bot.chat('テレポートに失敗しちゃったみたい…。');
+    }
 }
 
 /**
