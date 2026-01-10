@@ -2,10 +2,8 @@ name: Minecraft AI Bot Runner
 
 on:
   workflow_dispatch: # 手動で起動できるようにする
-  workflow_run: # 自分自身のワークフローから起動されるようにする
-    workflows: ["Minecraft AI Bot Runner"]
-    types:
-      - completed
+  repository_dispatch:
+    types: [run-minecraft-bot] # このイベントタイプで起動されるようにする
 
 jobs:
   run-bots:
@@ -64,10 +62,14 @@ jobs:
     if: always() # run-botsジョブが成功しても失敗しても実行
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger next workflow run
+      - name: Trigger next workflow run via repository_dispatch
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GH_REPO: ${{ github.repository }}
         run: |
-          echo "All bots have completed their session. Triggering next run."
-          gh workflow run main.yml --repo $GH_REPO
+          echo "All bots have completed their session. Triggering next run via repository_dispatch."
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            "/repos/${GH_REPO}/dispatches" \
+            -f event_type='run-minecraft-bot'
