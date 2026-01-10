@@ -1,0 +1,73 @@
+name: Minecraft AI Bot Runner
+
+on:
+  workflow_dispatch: # 手動で起動できるようにする
+  workflow_run: # 自分自身のワークフローから起動されるようにする
+    workflows: ["Minecraft AI Bot Runner"]
+    types:
+      - completed
+
+jobs:
+  run-bots:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 0から7までのインデックスで8体のBotを並列実行
+        bot_index: [0, 1, 2, 3, 4, 5, 6, 7]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # Mineflayerが要求するバージョン
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install ffmpeg and jq
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg jq
+
+      - name: Get Bot Username
+        id: get_username
+        run: |
+          USERNAME=$(jq -r --argjson index ${{ matrix.bot_index }} '.bots[$index].username' config.json)
+          echo "BOT_USERNAME=$USERNAME" >> $GITHUB_ENV
+
+      - name: Run Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          BOT_INDEX: ${{ matrix.bot_index }}
+        run: node main.js
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'github-actions-bot@github.com'
+
+      - name: Commit and Push Memory File
+        run: |
+          MEMORY_FILE="kioku_${{ env.BOT_USERNAME }}.txt"
+          git pull
+          git add "$MEMORY_FILE"
+          # 変更がある場合のみコミット
+          git diff --staged --quiet || git commit -m "Update memory for ${{ env.BOT_USERNAME }}"
+          git push
+
+  # 全てのBotジョブが完了した後に再起動をトリガーするジョブ
+  trigger-next-run:
+    needs: run-bots # run-botsジョブの完了を待つ
+    if: always() # run-botsジョブが成功しても失敗しても実行
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger next workflow run
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "All bots have completed their session. Triggering next run."
+          gh workflow run main.yml --repo $GH_REPO

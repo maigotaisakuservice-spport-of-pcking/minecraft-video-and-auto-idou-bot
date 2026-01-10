@@ -1,0 +1,28 @@
+{
+  "minecraft": {
+    "server_host": "tetsukura-youtube.aternos.me",
+    "server_port": 57565,
+    "version": "1.20.1"
+  },
+  "bots": [
+    { "username": "TekipakiPC" },
+    { "username": "Akatsuki" },
+    { "username": "Hisui" },
+    { "username": "Shinon" },
+    { "username": "Sazanami" },
+    { "username": "Yukikaze" },
+    { "username": "Asagiri" },
+    { "username": "Yugure" }
+  ],
+  "recorder": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60
+  },
+  "gdrive": {
+    "parent_folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID"
+  },
+  "behavior": {
+    "event_coordinates": { "x": 0, "y": 100, "z": 0 }
+  }
+}

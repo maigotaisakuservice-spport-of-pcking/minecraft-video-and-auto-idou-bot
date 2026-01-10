@@ -1,0 +1,119 @@
+const fs = require('fs');
+const path = require('path');
+const schedule = require('node-schedule');
+const { createBot, disconnectBot } = require('./src/bot.js');
+const { startRecording, stopRecording } = require('./src/recorder.js');
+const { thinkAndAct } = require('./src/ai.js');
+const { uploadFile } = require('./src/gdrive.js');
+
+// --- 設定 ---
+const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+const BOT_INDEX = parseInt(process.env.BOT_INDEX || '0', 10);
+const BOT_USERNAME = config.bots[BOT_INDEX].username;
+const SHUTDOWN_TIMER_MS = 5.5 * 60 * 60 * 1000; // 5時間30分
+
+// --- グローバル変数 ---
+let bot;
+let aiInterval;
+let eventScheduler;
+let isShuttingDown = false;
+const videoFilePath = path.join(__dirname, `${BOT_USERNAME}_${new Date().toISOString().replace(/:/g, '-')}.mp4`);
+const memoryFilePath = path.join(__dirname, `kioku_${BOT_USERNAME}.txt`);
+
+/**
+ * メイン処理
+ */
+async function main() {
+    try {
+        // 1. Botの作成とサーバー接続
+        bot = await createBot(BOT_USERNAME);
+
+        // 2. 録画開始
+        await startRecording(bot, videoFilePath);
+
+        // 3. AI思考ループを開始 (5分ごと)
+        // 初回はすぐに実行
+        thinkAndAct(bot);
+        aiInterval = setInterval(() => thinkAndAct(bot), 5 * 60 * 1000);
+
+        // 4. 15分ごとの定例イベントを設定
+        const rule = new schedule.RecurrenceRule();
+        rule.minute = [0, 15, 30, 45];
+        eventScheduler = schedule.scheduleJob(rule, () => runScheduledEvent());
+
+        // 5. 安全なシャットダウンタイマーを設定
+        setTimeout(shutdown, SHUTDOWN_TIMER_MS);
+        console.log(`[${BOT_USERNAME}] Shutdown timer set for 5.5 hours.`);
+
+    } catch (error) {
+        console.error(`[${BOT_USERNAME}] An error occurred during main execution:`, error);
+        await shutdown('error');
+    }
+}
+
+/**
+ * 15分ごとの定例イベント
+ */
+function runScheduledEvent() {
+    if (isShuttingDown) return;
+    console.log(`[${BOT_USERNAME}] It's time for the scheduled event!`);
+    const { x, y, z } = config.behavior.event_coordinates;
+    bot.chat(`/say みんな集合！時間だよ！`);
+    // Pathfinderプラグインが導入されたら、以下のように移動コマンドを実行
+    // bot.pathfinder.setGoal(new GoalNear(x, y, z, 1));
+}
+
+/**
+ * 安全なシャットダウン処理
+ * @param {string} reason - シャットダウンの理由
+ */
+async function shutdown(reason = 'scheduled') {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`[${BOT_USERNAME}] Shutting down... Reason: ${reason}`);
+
+    // 思考ループとイベントスケジューラを停止
+    if (aiInterval) clearInterval(aiInterval);
+    if (eventScheduler) eventScheduler.cancel();
+
+    // 録画停止
+    await stopRecording();
+    console.log(`[${BOT_USERNAME}] Recording stopped.`);
+
+    try {
+        // 動画をアップロード
+        if (fs.existsSync(videoFilePath)) {
+            await uploadFile(videoFilePath, BOT_USERNAME);
+            fs.unlinkSync(videoFilePath); // アップロード後にローカルファイルを削除
+            console.log(`[${BOT_USERNAME}] Local video file deleted.`);
+        }
+
+        // 記憶ファイルをアップロード
+        if (fs.existsSync(memoryFilePath)) {
+            await uploadFile(memoryFilePath, BOT_USERNAME);
+            // 記憶ファイルはGitで管理するため、ローカルでは消さない
+        }
+
+    } catch(uploadError) {
+        console.error(`[${BOT_USERNAME}] Critical error during file upload:`, uploadError);
+        // アップロードに失敗しても、Botの切断とプロセスの終了は試みる
+    }
+
+    // Botを切断
+    disconnectBot(bot);
+
+    console.log(`[${BOT_USERNAME}] Shutdown sequence complete.`);
+    process.exit(0);
+}
+
+
+// --- プロセスの予期せぬ終了を捕捉 ---
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('uncaughtException', (err) => {
+    console.error('An uncaught exception occurred:', err);
+    shutdown('uncaughtException');
+});
+
+// --- 実行開始 ---
+main();
