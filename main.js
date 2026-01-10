@@ -3,6 +3,7 @@ const fsSync = require('fs');
 const path = require('path');
 const schedule = require('node-schedule');
 const { exec } = require('child_process');
+const { GoalNear } = require('mineflayer-pathfinder').goals;
 const { createBot, disconnectBot } = require('./src/bot.js');
 const { startRecording, stopRecording } = require('./src/recorder.js');
 const { thinkAndAct } = require('./src/ai.js');
@@ -108,9 +109,9 @@ async function runScheduledEvent() {
     }
 
     const { x, y, z } = config.behavior.event_coordinates;
-    bot.chat(`/say みんな集合！パート${JSON.parse(fsSync.readFileSync('./state.json', 'utf8')).current_part -1}の撮影お疲れ様！サムネ撮るよー！`);
-    // Pathfinderプラグインが導入されたら、以下のように移動コマンドを実行
-    // bot.pathfinder.setGoal(new GoalNear(x, y, z, 1));
+    bot.chat(`/say みんな集合！パート${JSON.parse(fsSync.readFileSync('./state.json', 'utf8')).current_part -1}の撮影お疲れ様！座標(${x}, ${y}, ${z})に向かうよ！`);
+    // Pathfinderプラグインで集合場所へ移動
+    bot.pathfinder.setGoal(new GoalNear(x, y, z, 1));
 }
 
 /**

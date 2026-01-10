@@ -1,4 +1,5 @@
 const mineflayer = require('mineflayer');
+const { pathfinder, Movements } = require('mineflayer-pathfinder');
 const fs = require('fs');
 
 // 設定ファイルを読み込む
@@ -24,6 +25,14 @@ function createBot(username) {
     // イベントリスナー
     bot.once('spawn', () => {
       console.log(`[${username}] Spawned successfully.`);
+
+      // Pathfinderプラグインをロード
+      bot.loadPlugin(pathfinder);
+      const mcData = require('minecraft-data')(bot.version);
+      const defaultMove = new Movements(bot, mcData);
+      bot.pathfinder.setMovements(defaultMove);
+
+      console.log(`[${username}] Pathfinder plugin loaded.`);
       resolve(bot);
     });
 
