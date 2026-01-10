@@ -1,11 +1,50 @@
-name: Minimal Workflow Runner for Debugging
+name: Minecraft AI Bot Runner
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [run-minecraft-bot]
 
 jobs:
-  test-run:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      bot_indices: ${{ steps.get_indices.outputs.result }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Get Bot Indices
+        id: get_indices
+        run: |
+          COUNT=$(jq '.bots | length' config.json)
+          INDICES=$(seq 0 $(($COUNT - 1)) | jq -R . | jq -s .)
+          echo "result=$INDICES" >> $GITHUB_OUTPUT
+
+  run-bots:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        bot_index: fromJSON(needs.setup.outputs.bot_indices)
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Announce Bot Run
+        run: |
+          USERNAME=$(jq -r --argjson index ${{ matrix.bot_index }} '.bots[$index].username' config.json)
+          echo "This is the placeholder run for bot index ${{ matrix.bot_index }} (Username: $USERNAME)."
+          echo "The matrix strategy and job dependency are working correctly if you see this message for all 8 bots."
+
+  trigger-next-run:
+    needs: [setup, run-bots]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Say Hello
-        run: echo "Hello World! If you see this message, the basic workflow trigger is working correctly."
+      - name: Announce Trigger Step
+        run: |
+          echo "All bot jobs completed. This is the placeholder for the self-triggering job."
+
