@@ -25,7 +25,7 @@ jobs:
       - name: Install System Dependencies for Canvas and FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg xvfb
 
       - name: Install Node.js Dependencies
         run: npm install
@@ -41,7 +41,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           BOT_INDEX: ${{ matrix.bot_index }}
-        run: node main.js
+        run: xvfb-run --auto-servernum --server-args "-screen 0 1920x1080x24" node main.js
 
       - name: Configure Git
         run: |
@@ -63,7 +63,7 @@ jobs:
     steps:
       - name: Trigger next workflow run via repository_dispatch
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           GH_REPO: ${{ github.repository }}
         run: |
           echo "All bots have completed their session. Triggering next run via repository_dispatch."
