@@ -1,4 +1,4 @@
-name: Minecraft AI Bot Runner (Final Test - Step 1)
+name: Minecraft AI Bot Runner (Final Test - Step 2)
 
 on:
   workflow_dispatch:
@@ -42,8 +42,16 @@ jobs:
 
       - name: Install Node.js Dependencies
         run: npm install
-
-      - name: Announce Completion of Step 1
+        
+      - name: Get Bot Username
+        id: get_username
         run: |
-          echo "Step 1 (Stable Base) successful for bot index ${{ matrix.bot_index }}."
-          echo "This confirms the workflow file structure, setup job, and dependency installation are all working correctly."
+          USERNAME=$(jq -r --argjson index ${{ matrix.bot_index }} '.bots[$index].username' config.json)
+          echo "BOT_USERNAME=$USERNAME" >> $GITHUB_ENV
+
+      - name: Run Bot (Execution Test)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          BOT_INDEX: ${{ matrix.bot_index }}
+        run: node main.js
