@@ -6,26 +6,12 @@ on:
     types: [run-minecraft-bot]
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      bot_indices: ${{ steps.get_indices.outputs.result }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Get Bot Indices
-        id: get_indices
-        run: |
-          INDICES=$(jq '[range(0; .bots | length)]' config.json)
-          echo "result=$INDICES" >> $GITHUB_OUTPUT
-
   run-bots:
-    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        bot_index: fromJSON(needs.setup.outputs.bot_indices)
+        bot_index: [0, 1, 2, 3, 4, 5, 6, 7]
     
     steps:
       - name: Checkout repository
@@ -67,12 +53,11 @@ jobs:
           MEMORY_FILE="kioku_${{ env.BOT_USERNAME }}.txt"
           git pull
           git add "$MEMORY_FILE"
-          # Commit only if there are changes
           git diff --staged --quiet || git commit -m "Update memory for ${{ env.BOT_USERNAME }}"
           git push
 
   trigger-next-run:
-    needs: [setup, run-bots]
+    needs: run-bots
     if: always()
     runs-on: ubuntu-latest
     steps:
