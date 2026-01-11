@@ -1,9 +1,7 @@
-name: Minecraft AI Bot Runner
+name: Minecraft AI Bot Runner (Final Test - Step 1)
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [run-minecraft-bot]
 
 jobs:
   setup:
@@ -13,7 +11,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      # jq is pre-installed on GitHub runners, so no installation is needed.
       - name: Get Bot Indices
         id: get_indices
         run: |
@@ -38,48 +35,15 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Install System Dependencies for Canvas and FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg
+
       - name: Install Node.js Dependencies
         run: npm install
 
-      - name: Get Bot Username
-        id: get_username
+      - name: Announce Completion of Step 1
         run: |
-          USERNAME=$(jq -r --argjson index ${{ matrix.bot_index }} '.bots[$index].username' config.json)
-          echo "BOT_USERNAME=$USERNAME" >> $GITHUB_ENV
-
-      - name: Run Bot
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          BOT_INDEX: ${{ matrix.bot_index }}
-        run: node main.js
-
-      - name: Configure Git
-        run: |
-          git config --global user.name 'GitHub Actions Bot'
-          git config --global user.email 'github-actions-bot@github.com'
-      
-      - name: Commit and Push Memory File
-        run: |
-          MEMORY_FILE="kioku_${{ env.BOT_USERNAME }}.txt"
-          git pull
-          git add "$MEMORY_FILE"
-          git diff --staged --quiet || git commit -m "Update memory for ${{ env.BOT_USERNAME }}"
-          git push
-
-  trigger-next-run:
-    needs: [setup, run-bots]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger next workflow run via repository_dispatch
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          echo "All bots have completed their session. Triggering next run via repository_dispatch."
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            "/repos/${GH_REPO}/dispatches" \
-            -f event_type='run-minecraft-bot'
+          echo "Step 1 (Stable Base) successful for bot index ${{ matrix.bot_index }}."
+          echo "This confirms the workflow file structure, setup job, and dependency installation are all working correctly."
