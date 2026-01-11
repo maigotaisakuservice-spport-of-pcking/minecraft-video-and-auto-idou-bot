@@ -13,12 +13,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      # jq is pre-installed on GitHub runners, so no installation is needed.
       - name: Get Bot Indices
         id: get_indices
         run: |
-          COUNT=$(jq '.bots | length' config.json)
-          INDICES=$(seq 0 $(($COUNT - 1)) | jq -R . | jq -s .)
+          INDICES=$(jq '[range(0; .bots | length)]' config.json)
           echo "result=$INDICES" >> $GITHUB_OUTPUT
 
   run-bots:
@@ -69,6 +67,7 @@ jobs:
           MEMORY_FILE="kioku_${{ env.BOT_USERNAME }}.txt"
           git pull
           git add "$MEMORY_FILE"
+          # Commit only if there are changes
           git diff --staged --quiet || git commit -m "Update memory for ${{ env.BOT_USERNAME }}"
           git push
 
