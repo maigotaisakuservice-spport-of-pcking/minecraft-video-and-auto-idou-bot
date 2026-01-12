@@ -55,7 +55,7 @@ jobs:
 
       - name: 💾 Upload Debug Logs on Failure
         if: steps.npm_install.outcome == 'failure'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: npm-debug-logs-${{ matrix.bot_index }}
           path: |
