@@ -4,7 +4,7 @@ const path = require('path');
 const schedule = require('node-schedule');
 const { exec } = require('child_process');
 const { createBot, disconnectBot } = require('./src/bot.js');
-const { startRecording, stopRecording, takeScreenshot } = require('./src/recorder.js');
+const { startRecording, stopRecording, takeScreenshot, cycleRecording } = require('./src/recorder.js');
 const { thinkAndAct } = require('./src/ai.js');
 const { uploadFile } = require('./src/gdrive.js');
 
@@ -18,9 +18,31 @@ const SHUTDOWN_TIMER_MS = 5.5 * 60 * 60 * 1000; // 5時間30分
 let bot;
 let aiInterval;
 let eventScheduler;
+let recordingCycleInterval;
 let isShuttingDown = false;
-const videoFilePath = path.join(__dirname, `${BOT_USERNAME}_${new Date().toISOString().replace(/:/g, '-')}.mp4`);
+let videoFilePath = path.join(__dirname, `${BOT_USERNAME}_${new Date().toISOString().replace(/:/g, '-')}_part1.mp4`);
 const memoryFilePath = path.join(__dirname, `kioku_${BOT_USERNAME}.txt`);
+let recordingPart = 1;
+
+/**
+ * 動画ファイルを非同期でアップロードし、ローカルファイルを削除します。
+ * エラーが発生してもプロセスは終了しません。
+ * @param {string} filePath - アップロードする動画ファイルのパス。
+ */
+async function uploadVideoAndCleanup(filePath) {
+    if (!fsSync.existsSync(filePath)) {
+        console.log(`[${BOT_USERNAME}] Upload skipped: File not found - ${filePath}`);
+        return;
+    }
+    console.log(`[${BOT_USERNAME}] Starting background upload for: ${filePath}`);
+    try {
+        await uploadFile(filePath, BOT_USERNAME);
+        await fs.unlink(filePath);
+        console.log(`[${BOT_USERNAME}] Successfully uploaded and deleted: ${filePath}`);
+    } catch (error) {
+        console.error(`[${BOT_USERNAME}] Error during background upload for ${filePath}:`, error);
+    }
+}
 
 /**
  * メイン処理
@@ -38,12 +60,18 @@ async function main() {
         thinkAndAct(bot);
         aiInterval = setInterval(() => thinkAndAct(bot), 5 * 60 * 1000);
 
-        // 4. 15分ごとの定例イベントを設定
-        const rule = new schedule.RecurrenceRule();
-        rule.minute = [0, 15, 30, 45];
-        eventScheduler = schedule.scheduleJob(rule, () => runScheduledEvent());
+        // 4. 1分ごとの録画サイクルを開始 (テスト用)
+        const RECORDING_CYCLE_MS = 1 * 60 * 1000;
+        recordingCycleInterval = setInterval(runRecordingCycle, RECORDING_CYCLE_MS);
+        console.log(`[${BOT_USERNAME}] [TEST MODE] Recording cycle started. New video part every 1 minute.`);
 
-        // 5. 安全なシャットダウンタイマーを設定
+        // 5. 毎分ごとの定例イベントを設定 (テスト用)
+        const rule = new schedule.RecurrenceRule();
+        // rule.minute = [0, 15, 30, 45]; // 本番用
+        rule.second = 0; // テスト用に毎分実行
+        eventScheduler = schedule.scheduleJob(rule, () => runThumbnailEvent());
+
+        // 6. 安全なシャットダウンタイマーを設定
         setTimeout(shutdown, SHUTDOWN_TIMER_MS);
         console.log(`[${BOT_USERNAME}] Shutdown timer set for 5.5 hours.`);
 
@@ -54,83 +82,66 @@ async function main() {
 }
 
 /**
- * Gitコマンドを実行します。
- * @param {string} command - 実行するGitコマンド。
- * @returns {Promise<string>} コマンドの標準出力。
+ * 15分ごとに録画を区切り、アップロードを開始します。
  */
-function git(command) {
-    return new Promise((resolve, reject) => {
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Git error: ${stderr}`);
-                return reject(error);
-            }
-            resolve(stdout.trim());
-        });
-    });
+async function runRecordingCycle() {
+    if (isShuttingDown) return;
+    console.log(`[${BOT_USERNAME}] Cycling recording...`);
+
+    recordingPart++;
+    const newVideoFilePath = path.join(__dirname, `${BOT_USERNAME}_${new Date().toISOString().replace(/:/g, '-')}_part${recordingPart}.mp4`);
+
+    try {
+        const completedVideoPath = await cycleRecording(bot, newVideoFilePath);
+        videoFilePath = newVideoFilePath; // Update global path to the new file
+
+        // Start upload in the background (fire and forget)
+        uploadVideoAndCleanup(completedVideoPath);
+
+    } catch (error) {
+        console.error(`[${BOT_USERNAME}] Error during recording cycle:`, error);
+        // Attempt to restart recording in case of error
+        try {
+            await startRecording(bot, newVideoFilePath);
+            videoFilePath = newVideoFilePath;
+        } catch (restartError) {
+             console.error(`[${BOT_USERNAME}] CRITICAL: Failed to restart recording after cycle error. Shutting down.`, restartError);
+             await shutdown('recording_cycle_failure');
+        }
+    }
 }
 
 /**
- * 15分ごとの定例イベント
+ * 15分ごとのサムネイル撮影イベント
  */
-async function runScheduledEvent() {
+async function runThumbnailEvent() {
     if (isShuttingDown) return;
 
-    const state = JSON.parse(fsSync.readFileSync('./state.json', 'utf8'));
-    if (state.current_part >= 47) {
-        console.log(`[${BOT_USERNAME}] Part ${state.current_part}. Grand finale tour time! Skipping regular event.`);
-        return;
-    }
-
-    console.log(`[${BOT_USERNAME}] It's time for the scheduled event! This marks the end of a part.`);
-
-    // リーダーBot（TekipakiPC）のみがパートを更新
-    if (BOT_INDEX === 0) {
-        console.log(`[${BOT_USERNAME}] As the leader, updating the part number.`);
-        try {
-            // state.jsonを読み込み、パート番号をインクリメント
-            const statePath = path.join(__dirname, 'state.json');
-            const state = JSON.parse(await fs.readFile(statePath, 'utf8'));
-            state.current_part += 1;
-            await fs.writeFile(statePath, JSON.stringify(state, null, 2));
-            console.log(`[${BOT_USERNAME}] Part updated to ${state.current_part}.`);
-
-            // Gitに変更をコミット＆プッシュ
-            await git('git pull');
-            await git('git add state.json');
-            await git(`git commit -m "Update to part ${state.current_part}"`);
-            await git('git push');
-            console.log(`[${BOT_USERNAME}] Part update successfully pushed to repository.`);
-
-        } catch (error) {
-            console.error(`[${BOT_USERNAME}] Failed to update part number:`, error);
-        }
-    }
+    console.log(`[${BOT_USERNAME}] It's time for the scheduled thumbnail event.`);
 
     const { x, y, z } = config.behavior.event_coordinates;
     const currentPos = bot.entity.position.clone();
 
-    bot.chat(`/say みんな集合！パート${JSON.parse(fsSync.readFileSync('./state.json', 'utf8')).current_part -1}の撮影お疲れ様！TPするよー！`);
+    bot.chat(`/say みんな、15分経過！サムネイル撮影のために一度集合するよー！`);
 
     try {
-        // テレポートして撮影し、元の場所に戻る
+        // Teleport, take screenshot, return
         await bot.chat(`/tp ${BOT_USERNAME} ${x} ${y} ${z}`);
-
-        // 5秒待機して描画を安定させる
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        const state = JSON.parse(await fs.readFile(path.join(__dirname, 'state.json'), 'utf8'));
-        const thumbnailPath = path.join(__dirname, `thumbnail_part_${state.current_part - 1}.png`);
+        const thumbnailPath = path.join(__dirname, `thumbnail_${new Date().toISOString().replace(/:/g, '-')}.png`);
         console.log(`[${BOT_USERNAME}] Taking thumbnail screenshot: ${thumbnailPath}`);
         await takeScreenshot(thumbnailPath);
 
-        // 元の場所に戻る
+        // Upload thumbnail in the background
+        uploadVideoAndCleanup(thumbnailPath);
+
         await bot.chat(`/tp ${BOT_USERNAME} ${currentPos.x} ${currentPos.y} ${currentPos.z}`);
         console.log(`[${BOT_USERNAME}] Teleported back to original position.`);
 
     } catch (error) {
-        console.error(`[${BOT_USERNAME}] An error occurred during teleport event:`, error);
-        bot.chat('テレポートに失敗しちゃったみたい…。');
+        console.error(`[${BOT_USERNAME}] An error occurred during thumbnail event:`, error);
+        bot.chat('サムネイル撮影に失敗しちゃったみたい…。');
     }
 }
 
@@ -143,47 +154,29 @@ async function shutdown(reason = 'scheduled') {
     isShuttingDown = true;
     console.log(`[${BOT_USERNAME}] Shutting down... Reason: ${reason}`);
 
-    // 思考ループとイベントスケジューラを停止
+    // Stop all intervals and schedulers
     if (aiInterval) clearInterval(aiInterval);
+    if (recordingCycleInterval) clearInterval(recordingCycleInterval);
     if (eventScheduler) eventScheduler.cancel();
 
-    // 録画停止
+    // Stop recording, which finalizes the last video file
     await stopRecording();
-    console.log(`[${BOT_USERNAME}] Recording stopped.`);
+    console.log(`[${BOT_USERNAME}] Recording stopped. Final video part is: ${videoFilePath}`);
 
     try {
-        // 動画をアップロード
-        if (fsSync.existsSync(videoFilePath)) {
-            await uploadFile(videoFilePath, BOT_USERNAME);
-            fsSync.unlinkSync(videoFilePath); // アップロード後にローカルファイルを削除
-            console.log(`[${BOT_USERNAME}] Local video file deleted.`);
-        }
+        // Upload the very last video part
+        await uploadVideoAndCleanup(videoFilePath);
 
-        // 記憶ファイルをアップロード
+        // Upload memory file
         if (fsSync.existsSync(memoryFilePath)) {
             await uploadFile(memoryFilePath, BOT_USERNAME);
-            // 記憶ファイルはGitで管理するため、ローカルでは消さない
-        }
-
-        // サムネイル画像をアップロード
-        const files = await fs.readdir(__dirname);
-        for (const file of files) {
-            if (file.startsWith('thumbnail_') && file.endsWith('.png')) {
-                const thumbnailPath = path.join(__dirname, file);
-                await uploadFile(thumbnailPath, BOT_USERNAME);
-                fsSync.unlinkSync(thumbnailPath);
-                console.log(`[${BOT_USERNAME}] Local thumbnail file ${file} deleted.`);
-            }
         }
 
     } catch(uploadError) {
-        console.error(`[${BOT_USERNAME}] Critical error during file upload:`, uploadError);
-        // アップロードに失敗しても、Botの切断とプロセスの終了は試みる
+        console.error(`[${BOT_USERNAME}] Critical error during final file upload:`, uploadError);
     }
 
-    // Botを切断
     disconnectBot(bot);
-
     console.log(`[${BOT_USERNAME}] Shutdown sequence complete.`);
     process.exit(0);
 }
