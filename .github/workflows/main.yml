@@ -25,16 +25,13 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install System Dependencies for Canvas and FFmpeg
+      - name: Install All System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg xvfb g++ pkg-config libpng-dev libpixman-1-dev libxcb1-dev libxcb-shm0-dev libgtk2.0-dev libjpeg-turbo8-dev
-
-      - name: Install Node.js build tools
-        run: npm install -g node-gyp
+          sudo apt-get install -y build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-turbo8-dev libgif-dev librsvg2-dev libpixman-1-dev libgtk2.0-dev ffmpeg xvfb
 
       - name: Install Node.js Dependencies
-        run: npm install --build-from-source --verbose > npm_install.log 2>&1 || (echo "--- NPM INSTALL LOG ---" && cat npm_install.log && exit 1)
+        run: npm install
 
       - name: Verify Canvas Installation
         run: node -e "require('canvas'); console.log('Canvas module loaded successfully.');"
