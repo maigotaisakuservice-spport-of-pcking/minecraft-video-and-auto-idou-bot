@@ -28,10 +28,10 @@ jobs:
       - name: Install System Dependencies for Canvas and FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg xvfb g++ pkg-config libpng-dev libpixman-1-dev libxcb1-dev libxcb-shm0-dev
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg xvfb g++ pkg-config libpng-dev libpixman-1-dev libxcb1-dev libxcb-shm0-dev libgtk2.0-dev libjpeg-turbo8-dev
 
-      - name: Pre-install build tools for Canvas
-        run: npm install -g node-gyp canvas
+      - name: Install Node.js build tools
+        run: npm install -g node-gyp
 
       - name: Install Node.js Dependencies
         run: npm install
