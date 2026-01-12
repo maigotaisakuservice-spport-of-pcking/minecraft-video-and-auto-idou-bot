@@ -6,26 +6,12 @@ on:
     types: [run-minecraft-bot]
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      bot_indices: ${{ steps.get_indices.outputs.result }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Get Bot Indices
-        id: get_indices
-        run: |
-          INDICES=$(jq '[range(0; .bots | length)]' config.json)
-          echo "result=$INDICES" >> $GITHUB_OUTPUT
-
   run-bots:
-    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        bot_index: fromJSON(needs.setup.outputs.bot_indices)
+        bot_index: [0, 1, 2, 3, 4, 5, 6, 7]
 
     steps:
       - name: Checkout repository
@@ -39,10 +25,13 @@ jobs:
       - name: Install System Dependencies for Canvas and FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg xvfb g++ pkg-config libpng-dev libpixman-1-dev libxcb1-dev libxcb-shm0-dev
 
       - name: Install Node.js Dependencies
         run: npm install
+
+      - name: Verify Canvas Installation
+        run: node -e "require('canvas'); console.log('Canvas module loaded successfully.');"
 
       - name: Get Bot Username
         id: get_username
@@ -55,7 +44,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           BOT_INDEX: ${{ matrix.bot_index }}
-        run: node main.js
+        run: xvfb-run --auto-servernum --server-args "-screen 0 1920x1080x24" node main.js
 
       - name: Configure Git
         run: |
@@ -67,18 +56,17 @@ jobs:
           MEMORY_FILE="kioku_${{ env.BOT_USERNAME }}.txt"
           git pull
           git add "$MEMORY_FILE"
-          # Commit only if there are changes
           git diff --staged --quiet || git commit -m "Update memory for ${{ env.BOT_USERNAME }}"
           git push
 
   trigger-next-run:
-    needs: [setup, run-bots]
+    needs: run-bots
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Trigger next workflow run via repository_dispatch
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           GH_REPO: ${{ github.repository }}
         run: |
           echo "All bots have completed their session. Triggering next run via repository_dispatch."
