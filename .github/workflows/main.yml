@@ -33,7 +33,10 @@ jobs:
       - name: Install Node.js build tools
         run: npm install -g node-gyp
 
-      - name: Install Node.js Dependencies
+      - name: Force Build and Capture Logs for Canvas
+        run: npm install canvas --build-from-source --verbose > npm_install.log 2>&1 || (cat npm_install.log && exit 1)
+
+      - name: Install Other Dependencies
         run: npm install
 
       - name: Verify Canvas Installation
