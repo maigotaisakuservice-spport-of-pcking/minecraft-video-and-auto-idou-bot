@@ -30,8 +30,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev ffmpeg xvfb g++ pkg-config libpng-dev libpixman-1-dev libxcb1-dev libxcb-shm0-dev
 
+      - name: Pre-install build tools for Canvas
+        run: npm install -g node-gyp canvas
+
       - name: Install Node.js Dependencies
-        run: npm install --verbose
+        run: npm install
 
       - name: Verify Canvas Installation
         run: node -e "require('canvas'); console.log('Canvas module loaded successfully.');"
@@ -69,7 +72,7 @@ jobs:
     steps:
       - name: Trigger next workflow run via repository_dispatch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           GH_REPO: ${{ github.repository }}
         run: |
           echo "All bots have completed their session. Triggering next run via repository_dispatch."

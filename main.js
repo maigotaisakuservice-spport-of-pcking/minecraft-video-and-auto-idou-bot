@@ -43,12 +43,54 @@ async function uploadVideoAndCleanup(filePath) {
 }
 
 /**
+ * 予期せぬ切断時にBotの再接続を試みます。
+ * @param {string} event - 'kicked' または 'end'
+ * @param {string} [reason] - 切断理由
+ */
+async function handleDisconnection(event, reason = 'Unknown') {
+    if (isShuttingDown) {
+        console.log(`[${BOT_USERNAME}] Disconnected during shutdown. Ignoring reconnection.`);
+        return;
+    }
+
+    console.error(`[${BOT_USERNAME}] Disconnected from server. Event: ${event}, Reason: ${JSON.stringify(reason)}`);
+    console.log(`[${BOT_USERNAME}] Attempting to reconnect in 30 seconds...`);
+
+    // Clean up existing processes
+    if (aiInterval) clearInterval(aiInterval);
+    if (eventScheduler) eventScheduler.cancel();
+
+    if (bot) {
+        bot.removeAllListeners();
+    }
+    bot = null;
+
+    try {
+        await stopRecording();
+    } catch (e) {
+        console.error(`[${BOT_USERNAME}] Error stopping recording during disconnect:`, e);
+    }
+
+    setTimeout(main, 30000);
+}
+
+/**
  * メイン処理
  */
 async function main() {
+    // 再接続の場合に備えて、既存のリスナーをクリア
+    if (bot) {
+        bot.removeAllListeners();
+        bot = null;
+    }
+
     try {
         // 1. Botの作成とサーバー接続
         bot = await createBot(BOT_USERNAME);
+
+        // イベントリスナーを設定
+        bot.once('kicked', (reason) => handleDisconnection('kicked', reason));
+        bot.once('end', (reason) => handleDisconnection('end', reason));
 
         // 2. state.jsonから現在のパート番号を読み込み、録画を開始
         const state = JSON.parse(await fs.readFile('state.json', 'utf8'));
@@ -62,12 +104,11 @@ async function main() {
         thinkAndAct(bot);
         aiInterval = setInterval(() => thinkAndAct(bot), 5 * 60 * 1000);
 
-        // 4. 統合されたパート管理イベントを設定 (1分ごと - テスト用)
+        // 4. 統合されたパート管理イベントを設定 (15分ごと)
         const rule = new schedule.RecurrenceRule();
-        // rule.minute = [0, 15, 30, 45]; // 本番用
-        rule.second = 0; // テスト用に毎分実行
+        rule.minute = [0, 15, 30, 45];
         eventScheduler = schedule.scheduleJob(rule, () => runScheduledPartEvent());
-        console.log(`[${BOT_USERNAME}] [TEST MODE] Scheduled part event handler is set up to run every minute.`);
+        console.log(`[${BOT_USERNAME}] Scheduled part event handler is set up.`);
 
         // 5. 安全なシャットダウンタイマーを設定
         setTimeout(shutdown, SHUTDOWN_TIMER_MS);
